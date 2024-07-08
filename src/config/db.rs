@@ -1,6 +1,10 @@
 use dotenv::dotenv;
-use sqlx::{postgres::PgPoolOptions, Pool, Row};
+use sqlx::PgPool;
+use sqlx::{postgres::PgPoolOptions, Pool};
 use std::env;
+use tokio::sync::OnceCell;
+
+static CONN: OnceCell<PgPool> = OnceCell::const_new();
 
 pub async fn connect_db() -> Result<Pool<sqlx::Postgres>, sqlx::Error> {
     dotenv().ok();
@@ -9,6 +13,24 @@ pub async fn connect_db() -> Result<Pool<sqlx::Postgres>, sqlx::Error> {
         .max_connections(5)
         .connect(db_url.as_str())
         .await?;
-
+    //TODO: add error handling
     Ok(pool)
+}
+async fn init_conn() -> PgPool {
+    let db_pool = connect_db();
+    let db_conn_info;
+    match db_pool.await {
+        Ok(value) => {
+            println!("Db Connection Successful");
+            db_conn_info = value;
+        }
+        Err(err) => {
+            println!("error {}", err);
+            panic!("Database connection was not established");
+        }
+    }
+    db_conn_info
+}
+pub async fn get_conn() -> &'static PgPool {
+    CONN.get_or_init(init_conn).await
 }

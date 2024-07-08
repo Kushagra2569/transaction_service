@@ -16,3 +16,5 @@ sqlx = { version = "0.7.4", features = [ "runtime-tokio-rustls", "postgres", "ma
 dotenv = "0.15.0"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
+bcrypt = "0.15.1" # For password hashing
+thiserror = "1.0.61"
