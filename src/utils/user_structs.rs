@@ -33,7 +33,6 @@ pub struct LoginRequest {
 }
 
 #[derive(Deserialize)]
-pub struct UserBalance {
+pub struct UserAuth {
     pub email: String,
-    pub balance: f64,
 }

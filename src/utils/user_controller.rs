@@ -35,11 +35,14 @@ pub async fn register_user(
     .await;
 
     if query1.is_ok() {
-        let query2 = sqlx::query("INSERT INTO users (id, full_name, role) VALUES ($1, $2, 'user')")
-            .bind(&userlogin.id)
-            .bind(&userlogin.fullname)
-            .execute(pool)
-            .await;
+        let query2 = sqlx::query(
+            "INSERT INTO users (id, full_name, role,email) VALUES ($1, $2, 'user', $3)",
+        )
+        .bind(&userlogin.id)
+        .bind(&userlogin.fullname)
+        .bind(&userlogin.email)
+        .execute(pool)
+        .await;
 
         if query2.is_ok() {
             let user = User {
@@ -128,6 +131,22 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
         }
     } else {
         let err = Errors::WrongCredentials;
+        return Err(err);
+    }
+}
+
+pub async fn get_user_balance(pool: &PgPool, email: &str) -> Result<f64, Errors> {
+    let query = sqlx::query("SELECT balance FROM users WHERE email = $1")
+        .bind(email)
+        .fetch_one(pool)
+        .await;
+
+    if query.is_ok() {
+        let row = query.unwrap();
+        let balance = row.get::<f64, &str>("balance");
+        return Ok(balance);
+    } else {
+        let err = Errors::DatabaseError(query.err().unwrap());
         return Err(err);
     }
 }

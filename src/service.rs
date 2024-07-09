@@ -1,4 +1,4 @@
-use crate::{config::db::get_conn, errors::Errors, utils::user_structs::AuthUser};
+use crate::{config::db::get_conn, errors::Errors};
 use axum::http::StatusCode;
 use chrono::{prelude::*, Duration};
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};

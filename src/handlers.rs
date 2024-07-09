@@ -1,9 +1,10 @@
 use super::service::authorize_user;
 use crate::config::db::get_conn;
 use crate::errors::Errors;
+use crate::utils::user_controller::get_user_balance;
 use crate::utils::{
     user_controller::{login_user, register_user},
-    user_structs::{LoginRequest, RegisterRequest},
+    user_structs::{LoginRequest, RegisterRequest, UserAuth},
 };
 use axum::{
     extract::{Json, Request},
@@ -108,6 +109,27 @@ pub async fn login_handler(Json(payload): Json<LoginRequest>) -> impl IntoRespon
                 "error": "Email is already taken",
             });
             (StatusCode::BAD_REQUEST, Json(error_json))
+        }
+        Err(e) => {
+            let error_json = serde_json::json!({
+                "error": e.to_string(),
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
+        }
+    }
+}
+
+pub async fn user_balance_handler(Json(payload): Json<UserAuth>) -> impl IntoResponse {
+    let pool = get_conn().await;
+    let user_email = payload.email.clone();
+
+    match get_user_balance(pool, user_email.as_str()).await {
+        Ok(balance) => {
+            let balance_json = serde_json::json!({
+                "balance": balance,
+                "email": user_email.as_str(),
+            });
+            (StatusCode::OK, Json(balance_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
