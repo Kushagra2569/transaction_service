@@ -38,3 +38,19 @@ pub struct LoginRequest {
 pub struct UserAuth {
     pub email: String,
 }
+
+#[derive(Deserialize)]
+pub struct TransactionRequest {
+    pub from_email: String,
+    pub to_email: String,
+    pub amount: f64,
+}
+
+#[derive(Deserialize)]
+pub struct Transaction {
+    pub id: String,
+    pub from_email: String,
+    pub to_email: String,
+    pub amount: f64,
+    pub trnx_time: DateTime<Utc>,
+}

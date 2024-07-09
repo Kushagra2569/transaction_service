@@ -3,8 +3,8 @@ use crate::config::db::get_conn;
 use crate::errors::Errors;
 use crate::utils::user_controller::get_user_balance;
 use crate::utils::{
-    user_controller::{login_user, register_user},
-    user_structs::{LoginRequest, RegisterRequest, UserAuth},
+    user_controller::{create_transaction, login_user, register_user},
+    user_structs::{LoginRequest, RegisterRequest, TransactionRequest, UserAuth},
 };
 use axum::{
     extract::{Json, Request},
@@ -149,6 +149,50 @@ pub async fn user_balance_handler(Json(payload): Json<UserAuth>) -> impl IntoRes
                 "email": user_email.as_str(),
             });
             (StatusCode::OK, Json(balance_json))
+        }
+        Err(e) => {
+            let error_json = serde_json::json!({
+                "error": e.to_string(),
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
+        }
+    }
+}
+
+pub async fn create_transaction_handler(
+    Json(payload): Json<TransactionRequest>,
+) -> impl IntoResponse {
+    let pool = get_conn().await;
+    let from_email = payload.from_email.clone();
+    let to_email = payload.to_email.clone();
+    let amount = payload.amount;
+
+    match create_transaction(pool, from_email.as_str(), to_email.as_str(), amount).await {
+        Ok(transaction) => {
+            let transaction_json = serde_json::json!({
+                "from_email": transaction.from_email,
+                "to_email": transaction.to_email,
+                "amount": transaction.amount,
+            });
+            (StatusCode::CREATED, Json(transaction_json))
+        }
+        Err(Errors::InsufficientBalance) => {
+            let error_json = serde_json::json!({
+                "error": "Insufficient balance",
+            });
+            (StatusCode::BAD_REQUEST, Json(error_json))
+        }
+        Err(Errors::UserDoesNotExist) => {
+            let error_json = serde_json::json!({
+                "error": "User does not exist",
+            });
+            (StatusCode::BAD_REQUEST, Json(error_json))
+        }
+        Err(Errors::TransactionError) => {
+            let error_json = serde_json::json!({
+                "error": "Transaction error",
+            });
+            (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
