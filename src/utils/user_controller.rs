@@ -12,6 +12,7 @@ pub async fn register_user(
     fullname: &str,
     email: &str,
     password: &str,
+    balance: &f64,
 ) -> Result<User, Errors> {
     let password_hash = hash(password, DEFAULT_COST).unwrap();
     let userlogin = &UserRegister {
@@ -22,6 +23,7 @@ pub async fn register_user(
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
+    //TODO: check user exists
     let query1 = sqlx::query(
         "INSERT INTO userlogin (full_name, password, email, id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -36,11 +38,12 @@ pub async fn register_user(
 
     if query1.is_ok() {
         let query2 = sqlx::query(
-            "INSERT INTO users (id, full_name, role,email) VALUES ($1, $2, 'user', $3)",
+            "INSERT INTO users (id, full_name, role,email,balance) VALUES ($1, $2, 'user', $3,$4)",
         )
         .bind(&userlogin.id)
         .bind(&userlogin.fullname)
         .bind(&userlogin.email)
+        .bind(&balance)
         .execute(pool)
         .await;
 
@@ -51,6 +54,7 @@ pub async fn register_user(
                 email: userlogin.email.clone(),
                 role: "user".to_string(),
                 token: "Not Valid".to_string(),
+                balance: *balance,
             };
             return Ok(user);
         } else {
@@ -82,6 +86,7 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
         let userid = row.get::<String, &str>("id");
         let email = row.get::<String, &str>("email");
         let fullname = row.get::<String, &str>("full_name");
+        let balance = row.get::<String, &str>("balance");
         println!("id: {}", userid);
         let dehashed_pass = verify(password, &pass);
         match dehashed_pass {
@@ -114,6 +119,7 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
                         email: email.to_string(),
                         role: "user".to_string(),
                         token: tokenstr,
+                        balance: balance.parse::<f64>().unwrap(),
                         //TODO: get role from db
                     };
                     println!("User: {} logged in at {}", user.email, Utc::now());

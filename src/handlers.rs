@@ -68,7 +68,25 @@ pub async fn authorise_check(req: Request) -> impl IntoResponse {
 pub async fn register_handler(Json(payload): Json<RegisterRequest>) -> impl IntoResponse {
     // Implement your user registration logic here
     let pool = get_conn().await;
-    match register_user(&pool, &payload.fullname, &payload.email, &payload.password).await {
+    let mut initial_balance = 0.0;
+    if let Some(balance) = payload.balance {
+        if balance < 0.0 {
+            let error_json = serde_json::json!({
+                "error": "Balance cannot be negative",
+            });
+            return (StatusCode::BAD_REQUEST, Json(error_json));
+        }
+        initial_balance = balance;
+    }
+    match register_user(
+        &pool,
+        &payload.fullname,
+        &payload.email,
+        &payload.password,
+        &initial_balance,
+    )
+    .await
+    {
         Ok(user) => {
             let user_json = serde_json::json!({
                 "fullname": user.fullname,
@@ -101,6 +119,7 @@ pub async fn login_handler(Json(payload): Json<LoginRequest>) -> impl IntoRespon
                 "fullname": user.fullname,
                 "email": user.email,
                 "token" : user.token,
+                "balance": user.balance,
             });
             (StatusCode::CREATED, Json(user_json))
         }

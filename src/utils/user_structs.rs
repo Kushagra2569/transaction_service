@@ -8,6 +8,7 @@ pub struct User {
     pub email: String,
     pub role: String,
     pub token: String,
+    pub balance: f64,
 }
 
 pub struct UserRegister {
@@ -24,6 +25,7 @@ pub struct RegisterRequest {
     pub fullname: String,
     pub password: String,
     pub email: String,
+    pub balance: Option<f64>,
 }
 
 #[derive(Deserialize)]
