@@ -1,7 +1,8 @@
 use crate::errors::Errors;
+use crate::service::{decode_token, encode_token};
 use chrono::prelude::*;
 
-use super::user_structs::{User, UserLogin, UserRegister};
+use super::user_structs::{User, UserRegister};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use sqlx::{PgPool, Row};
 use uuid::Uuid;
@@ -46,6 +47,7 @@ pub async fn register_user(
                 fullname: userlogin.fullname.clone(),
                 email: userlogin.email.clone(),
                 role: "user".to_string(),
+                token: "Not Valid".to_string(),
             };
             return Ok(user);
         } else {
@@ -75,29 +77,43 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
         let row = query1.unwrap();
         let pass = row.get::<String, &str>("password");
         let userid = row.get::<String, &str>("id");
+        let email = row.get::<String, &str>("email");
+        let fullname = row.get::<String, &str>("full_name");
         println!("id: {}", userid);
         let dehashed_pass = verify(password, &pass);
         match dehashed_pass {
             Ok(value) => {
                 if value {
                     println!("Password verified: {}", value);
-                    let query2 = sqlx::query("SELECT * FROM users WHERE id = ($1)")
+                    let token = encode_token(email.clone());
+                    let tokenstr;
+                    if token.is_err() {
+                        let err = Errors::InternalServerError;
+                        return Err(err);
+                    } else {
+                        tokenstr = token.unwrap();
+                    }
+
+                    let query2 = sqlx::query("INSERT INTO authorise (id, email, token) VALUES ($1, $2, $3) ON CONFLICT (id) DO UPDATE SET token = EXCLUDED.token")
                         .bind(&userid)
-                        .fetch_one(pool)
+                        .bind(&email)
+                        .bind(&tokenstr)
+                        .execute(pool)
                         .await;
                     if query2.is_err() {
-                        let err = Errors::WrongCredentials;
+                        println!("{:?}", query2);
+                        let err = Errors::InternalServerError;
                         return Err(err);
                     }
-                    let row2 = query2.unwrap();
                     let user = User {
-                        id: row2.get::<String, &str>("id"),
-                        fullname: row2.get::<String, &str>("full_name"),
+                        id: userid.to_string(),
+                        fullname: fullname.to_string(),
                         email: email.to_string(),
                         role: "user".to_string(),
+                        token: tokenstr,
                         //TODO: get role from db
                     };
-                    println!("User: {} logged it at {}", user.email, Utc::now());
+                    println!("User: {} logged in at {}", user.email, Utc::now());
                     return Ok(user);
                 } else {
                     let err = Errors::WrongCredentials;

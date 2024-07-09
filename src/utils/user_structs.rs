@@ -7,6 +7,7 @@ pub struct User {
     pub fullname: String,
     pub email: String,
     pub role: String,
+    pub token: String,
 }
 
 pub struct UserRegister {
@@ -16,10 +17,6 @@ pub struct UserRegister {
     pub password_hash: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
-}
-pub struct UserLogin {
-    pub email: String,
-    pub password_hash: String,
 }
 
 #[derive(Deserialize)]
@@ -33,4 +30,10 @@ pub struct RegisterRequest {
 pub struct LoginRequest {
     pub password: String,
     pub email: String,
+}
+
+#[derive(Deserialize)]
+pub struct UserBalance {
+    pub email: String,
+    pub balance: f64,
 }

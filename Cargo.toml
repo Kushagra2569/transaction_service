@@ -18,3 +18,5 @@ tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter"] }
 bcrypt = "0.15.1" # For password hashing
 thiserror = "1.0.61"
+jsonwebtoken = "9.3.0"
+

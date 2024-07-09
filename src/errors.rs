@@ -1,4 +1,3 @@
-use axum::http::StatusCode;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -11,4 +10,6 @@ pub enum Errors {
     WrongCredentials,
     #[error("email is already taken")]
     DuplicateUserEmail,
+    #[error("internal server error")]
+    InternalServerError,
 }
