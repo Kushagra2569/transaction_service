@@ -111,6 +111,11 @@ mod test_get_user_transaction {
     }
 
     #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+    struct Transactions {
+        pub transactions: Vec<Transaction>,
+    }
+
+    #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
     struct LoginRequest {
         email: String,
         fullname: String,
@@ -137,10 +142,14 @@ mod test_get_user_transaction {
 
         let transaction_response = server
             .get("/transaction")
+            .json(&json!({
+                        "email": "testemail123@test.com",
+            }))
             .add_header(axum_test::http::header::AUTHORIZATION, header_value)
-            .await;
+            .await
+            .json::<Transactions>();
         println!("{:?}", transaction_response);
-        let num_transactions = 2;
+        let num_transactions = transaction_response.transactions.len();
         assert_eq!(num_transactions, 2)
     }
 }
