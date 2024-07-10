@@ -1,11 +1,13 @@
 use super::service::authorize_user;
 use crate::config::db::get_conn;
 use crate::errors::Errors;
-use crate::utils::user_controller::get_user_balance;
 use crate::utils::{
-    user_controller::{create_transaction, login_user, register_user},
+    user_controller::{
+        create_transaction, get_user_balance, list_transactions, login_user, register_user,
+    },
     user_structs::{LoginRequest, RegisterRequest, TransactionRequest, UserAuth},
 };
+use axum::Extension;
 use axum::{
     extract::{Json, Request},
     http::StatusCode,
@@ -160,12 +162,35 @@ pub async fn user_balance_handler(Json(payload): Json<UserAuth>) -> impl IntoRes
 }
 
 pub async fn create_transaction_handler(
+    Extension(user_email): Extension<String>,
     Json(payload): Json<TransactionRequest>,
 ) -> impl IntoResponse {
     let pool = get_conn().await;
     let from_email = payload.from_email.clone();
     let to_email = payload.to_email.clone();
     let amount = payload.amount;
+
+    if amount < 0.0 {
+        let error_json = serde_json::json!({
+            "error": "Amount cannot be negative",
+        });
+        return (StatusCode::BAD_REQUEST, Json(error_json));
+    }
+
+    if from_email == to_email {
+        let error_json = serde_json::json!({
+            "error": "Cannot transfer to self",
+        });
+        return (StatusCode::BAD_REQUEST, Json(error_json));
+    }
+
+    println!("User Email: {}", user_email);
+    if user_email != from_email {
+        let error_json = serde_json::json!({
+            "error": "Unauthorized",
+        });
+        return (StatusCode::UNAUTHORIZED, Json(error_json));
+    }
 
     match create_transaction(pool, from_email.as_str(), to_email.as_str(), amount).await {
         Ok(transaction) => {
@@ -193,6 +218,27 @@ pub async fn create_transaction_handler(
                 "error": "Transaction error",
             });
             (StatusCode::BAD_REQUEST, Json(error_json))
+        }
+        Err(e) => {
+            let error_json = serde_json::json!({
+                "error": e.to_string(),
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
+        }
+    }
+}
+
+pub async fn list_transaction_handler(
+    Extension(user_email): Extension<String>,
+) -> impl IntoResponse {
+    println!("User Email: {}", user_email);
+    let pool = get_conn().await;
+    match list_transactions(pool, user_email.as_str()).await {
+        Ok(transactions) => {
+            let transactions_json = serde_json::json!({
+                "transactions": transactions,
+            });
+            (StatusCode::OK, Json(transactions_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({

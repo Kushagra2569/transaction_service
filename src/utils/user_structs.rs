@@ -1,5 +1,5 @@
 use chrono::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Deserialize)]
 pub struct User {
@@ -46,7 +46,7 @@ pub struct TransactionRequest {
     pub amount: f64,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 pub struct Transaction {
     pub id: String,
     pub from_email: String,

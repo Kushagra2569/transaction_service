@@ -4,7 +4,7 @@ use axum::{
 };
 use handlers::{
     authorise_check, authorization_middleware, create_transaction_handler, fallback_handler,
-    login_handler, register_handler, user_balance_handler,
+    list_transaction_handler, login_handler, register_handler, user_balance_handler,
 };
 mod errors;
 mod handlers;
@@ -28,6 +28,11 @@ pub fn trnx_service() -> Router {
         .route(
             "/transaction",
             post(create_transaction_handler)
+                .layer(axum::middleware::from_fn(authorization_middleware)),
+        )
+        .route(
+            "/transaction",
+            get(list_transaction_handler)
                 .layer(axum::middleware::from_fn(authorization_middleware)),
         )
         .fallback(fallback_handler)

@@ -257,3 +257,32 @@ pub async fn create_transaction(
         return Err(err);
     }
 }
+
+pub async fn list_transactions(pool: &PgPool, email: &str) -> Result<Vec<Transaction>, Errors> {
+    let query = sqlx::query("SELECT * FROM transactions WHERE from_email = $1 OR to_email = $1")
+        .bind(email)
+        .fetch_all(pool)
+        .await;
+    if query.is_ok() {
+        let mut transactions = Vec::new();
+        for row in query.unwrap() {
+            let id = row.get::<String, &str>("id");
+            let from_email = row.get::<String, &str>("from_email");
+            let to_email = row.get::<String, &str>("to_email");
+            let amount = row.get::<f64, &str>("amount");
+            let trnx_time = row.get::<DateTime<Utc>, &str>("created_at");
+            let transaction = Transaction {
+                id,
+                from_email,
+                to_email,
+                amount,
+                trnx_time,
+            };
+            transactions.push(transaction);
+        }
+        return Ok(transactions);
+    } else {
+        let err = Errors::DatabaseError(query.err().unwrap());
+        return Err(err);
+    }
+}
