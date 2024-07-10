@@ -5,7 +5,7 @@ use tracing_subscriber::EnvFilter;
 async fn main() {
     dotenv::dotenv().ok();
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
+        .with_env_filter(EnvFilter::new("info"))
         .pretty()
         .init();
     let server_addr = SocketAddr::from(([127, 0, 0, 1], 3042));

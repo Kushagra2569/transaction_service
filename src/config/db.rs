@@ -3,6 +3,7 @@ use sqlx::PgPool;
 use sqlx::{postgres::PgPoolOptions, Pool};
 use std::env;
 use tokio::sync::OnceCell;
+use tracing::{error, info, instrument};
 
 static CONN: OnceCell<PgPool> = OnceCell::const_new();
 
@@ -13,19 +14,20 @@ pub async fn connect_db() -> Result<Pool<sqlx::Postgres>, sqlx::Error> {
         .max_connections(5)
         .connect(db_url.as_str())
         .await?;
-    //TODO: add error handling
     Ok(pool)
 }
+
+#[instrument]
 async fn init_conn() -> PgPool {
     let db_pool = connect_db();
     let db_conn_info;
     match db_pool.await {
         Ok(value) => {
-            println!("Db Connection Successful");
+            info!("Db Connection Successful");
             db_conn_info = value;
         }
         Err(err) => {
-            println!("error {}", err);
+            error!("error {}", err);
             panic!("Database connection was not established");
         }
     }

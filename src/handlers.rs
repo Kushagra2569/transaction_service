@@ -15,12 +15,15 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Response},
 };
+use tracing::{error, info, instrument, warn};
 
 /// axum handler for any request that fails to match the router routes.
 /// This implementation returns HTTP status code Not Found (404).
+#[instrument]
 pub async fn fallback_handler(uri: axum::http::Uri) -> impl axum::response::IntoResponse {
     (
         axum::http::StatusCode::NOT_FOUND,
+        warn!("No route {}", uri),
         format!("No route {}", uri),
     )
 }
@@ -29,7 +32,6 @@ pub async fn authorization_middleware(
     mut req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    println!("Authorization Middleware");
     let auth_header = req
         .headers()
         .get(axum::http::header::AUTHORIZATION)
@@ -38,6 +40,7 @@ pub async fn authorization_middleware(
     let auth_header = if let Some(auth_header) = auth_header {
         auth_header
     } else {
+        warn!("No Authorization header");
         return Err(StatusCode::UNAUTHORIZED);
     };
     let mut header = auth_header.split_whitespace();
@@ -48,6 +51,7 @@ pub async fn authorization_middleware(
             extracted_token = newtoken;
         }
         None => {
+            warn!("Invalid token");
             return Err(StatusCode::UNAUTHORIZED);
         }
     }
@@ -56,7 +60,7 @@ pub async fn authorization_middleware(
         req.extensions_mut().insert(user_email);
         Ok(next.run(req).await)
     } else {
-        println!("Unauthorized");
+        warn!("Unauthorized");
         Err(StatusCode::UNAUTHORIZED)
     }
 }
@@ -77,6 +81,10 @@ pub async fn register_handler(Json(payload): Json<RegisterRequest>) -> impl Into
             let error_json = serde_json::json!({
                 "error": "Balance cannot be negative",
             });
+            info!(
+                "user: {} tried to register with amount {} with negative balance",
+                payload.email, balance
+            );
             return (StatusCode::BAD_REQUEST, Json(error_json));
         }
         initial_balance = balance;
@@ -95,18 +103,24 @@ pub async fn register_handler(Json(payload): Json<RegisterRequest>) -> impl Into
                 "fullname": user.fullname,
                 "email": user.email,
             });
+            info!("user: {} registered successfully", user.email);
             (StatusCode::CREATED, Json(user_json))
         }
         Err(Errors::DuplicateUserEmail) => {
             let error_json = serde_json::json!({
                 "error": "Email is already taken",
             });
+            warn!(
+                "user: {} attempted to register with an existing email",
+                payload.email
+            );
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while registering user: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }
@@ -124,18 +138,24 @@ pub async fn login_handler(Json(payload): Json<LoginRequest>) -> impl IntoRespon
                 "token" : user.token,
                 "balance": user.balance,
             });
+            info!("user: {} logged in successfully", user.email);
             (StatusCode::CREATED, Json(user_json))
         }
-        Err(Errors::DuplicateUserEmail) => {
+        Err(Errors::WrongCredentials) => {
             let error_json = serde_json::json!({
-                "error": "Email is already taken",
+                "error": "Wrong credentials",
             });
+            info!(
+                "user: {} attempted to login with wrong credentials",
+                payload.email
+            );
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while logging in user: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }
@@ -151,12 +171,14 @@ pub async fn user_balance_handler(Json(payload): Json<UserAuth>) -> impl IntoRes
                 "balance": balance,
                 "email": user_email.as_str(),
             });
+            info!("user: {} checked balance successfully", user_email);
             (StatusCode::OK, Json(balance_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while checking balance: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }
@@ -175,6 +197,10 @@ pub async fn create_transaction_handler(
         let error_json = serde_json::json!({
             "error": "Amount cannot be negative",
         });
+        warn!(
+            "user: {} initiated transaction amount {} with negative amount",
+            from_email, amount
+        );
         return (StatusCode::BAD_REQUEST, Json(error_json));
     }
 
@@ -182,14 +208,18 @@ pub async fn create_transaction_handler(
         let error_json = serde_json::json!({
             "error": "Cannot transfer to self",
         });
+        warn!("user: {} initiated transaction to self", from_email);
         return (StatusCode::BAD_REQUEST, Json(error_json));
     }
 
-    println!("User Email: {}", user_email);
     if user_email != from_email {
         let error_json = serde_json::json!({
             "error": "Unauthorized",
         });
+        warn!(
+            "user: {} attempted to initiate transaction for another user: {}",
+            user_email, from_email
+        );
         return (StatusCode::UNAUTHORIZED, Json(error_json));
     }
 
@@ -200,30 +230,44 @@ pub async fn create_transaction_handler(
                 "to_email": transaction.to_email,
                 "amount": transaction.amount,
             });
+            info!(
+                "user: {} initiated transaction to user: {} with amount {}",
+                from_email, to_email, amount
+            );
             (StatusCode::CREATED, Json(transaction_json))
         }
         Err(Errors::InsufficientBalance) => {
             let error_json = serde_json::json!({
                 "error": "Insufficient balance",
             });
+            warn!(
+                "user: {} attempted to initiate transaction with insufficient balance",
+                from_email
+            );
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(Errors::UserDoesNotExist) => {
             let error_json = serde_json::json!({
                 "error": "User does not exist",
             });
+            warn!(
+                "user: {} attempted to initiate transaction to non-existent user: {}",
+                from_email, to_email
+            );
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(Errors::TransactionError) => {
             let error_json = serde_json::json!({
                 "error": "Transaction error",
             });
+            error!("error occurred while creating transaction");
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while creating transaction: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }
@@ -232,19 +276,20 @@ pub async fn create_transaction_handler(
 pub async fn list_transaction_handler(
     Extension(user_email): Extension<String>,
 ) -> impl IntoResponse {
-    println!("User Email: {}", user_email);
     let pool = get_conn().await;
     match list_transactions(pool, user_email.as_str()).await {
         Ok(transactions) => {
             let transactions_json = serde_json::json!({
                 "transactions": transactions,
             });
+            info!("user: {} listed transactions successfully", user_email);
             (StatusCode::OK, Json(transactions_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while listing transactions: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }
@@ -271,18 +316,27 @@ pub async fn modify_user_handler(
                 "fullname": new_name,
                 "email": user_email,
             });
+            info!(
+                "user: {} updated fullname from {} to {}",
+                user_email, old_name, new_name
+            );
             (StatusCode::CREATED, Json(user_json))
         }
         Err(Errors::WrongCredentials) => {
             let error_json = serde_json::json!({
                 "error": "Old fullname does not match user's fullname",
             });
+            warn!(
+                "user: {} attempted to update fullname with wrong old name: {}",
+                user_email, old_name
+            );
             (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({
                 "error": e.to_string(),
             });
+            error!("error occurred while updating user: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
         }
     }

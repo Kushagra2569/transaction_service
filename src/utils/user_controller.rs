@@ -1,10 +1,11 @@
 use crate::errors::Errors;
-use crate::service::{decode_token, encode_token};
+use crate::service::encode_token;
 use chrono::prelude::*;
 
 use super::user_structs::{Transaction, User, UserRegister};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use sqlx::{PgPool, Row};
+use tracing::{error, info, instrument, warn};
 use uuid::Uuid;
 
 pub async fn register_user(
@@ -23,7 +24,6 @@ pub async fn register_user(
         created_at: Utc::now(),
         updated_at: Utc::now(),
     };
-    //TODO: check user exists
     let query = sqlx::query("SELECT * FROM userlogin WHERE email = $1")
         .bind(&userlogin.email)
         .fetch_optional(pool)
@@ -31,6 +31,10 @@ pub async fn register_user(
     if query.is_ok() {
         let row = query.unwrap();
         if row.is_some() {
+            warn!(
+                "Registering User with email {} already exists",
+                userlogin.email
+            );
             let err = Errors::DuplicateUserEmail;
             return Err(err);
         }
@@ -74,13 +78,13 @@ pub async fn register_user(
                 .execute(pool)
                 .await;
 
-            println!("{:?}", query2);
+            error!("Unable to insert into users table{:?}", query2);
 
             let err = Errors::DatabaseError(query2.unwrap_err());
             return Err(err);
         }
     } else {
-        println!("{:?}", query1);
+        error!("Unable to insert into userlogin table{:?}", query1);
         let err = Errors::DatabaseError(query1.unwrap_err());
         return Err(err);
     }
@@ -97,16 +101,14 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
         let userid = row.get::<String, &str>("id");
         let email = row.get::<String, &str>("email");
         let fullname = row.get::<String, &str>("full_name");
-        let balance = row.get::<String, &str>("balance");
-        println!("id: {}", userid);
         let dehashed_pass = verify(password, &pass);
         match dehashed_pass {
             Ok(value) => {
                 if value {
-                    println!("Password verified: {}", value);
                     let token = encode_token(email.clone());
                     let tokenstr;
                     if token.is_err() {
+                        error!("Unable to generate token{:?}", token);
                         let err = Errors::InternalServerError;
                         return Err(err);
                     } else {
@@ -120,20 +122,31 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
                         .execute(pool)
                         .await;
                     if query2.is_err() {
-                        println!("{:?}", query2);
+                        error!("Unable to insert into authorise table{:?}", query2);
                         let err = Errors::InternalServerError;
                         return Err(err);
                     }
+                    let query3 = sqlx::query("SELECT balance FROM users WHERE id = $1")
+                        .bind(&userid)
+                        .fetch_one(pool)
+                        .await;
+                    if query3.is_err() {
+                        error!("Unable to get balance for user{:?}", email);
+                        let err = Errors::DatabaseError(query3.err().unwrap());
+                        return Err(err);
+                    }
+                    let row3 = query3.unwrap();
+                    let balance = row3.get::<f64, &str>("balance");
                     let user = User {
                         id: userid.to_string(),
                         fullname: fullname.to_string(),
                         email: email.to_string(),
                         role: "user".to_string(),
                         token: tokenstr,
-                        balance: balance.parse::<f64>().unwrap(),
+                        balance,
                         //TODO: get role from db
                     };
-                    println!("User: {} logged in at {}", user.email, Utc::now());
+                    info!("User: {} logged in at {}", user.email, Utc::now());
                     return Ok(user);
                 } else {
                     let err = Errors::WrongCredentials;
@@ -141,12 +154,13 @@ pub async fn login_user(pool: &PgPool, email: &str, password: &str) -> Result<Us
                 }
             }
             Err(err) => {
-                println!("Password verification error: {}", err);
+                error!("Password verification error: {}", err);
                 let err = Errors::BcryptError(err);
                 return Err(err);
             }
         }
     } else {
+        warn!("User with email {} does not exist", email);
         let err = Errors::WrongCredentials;
         return Err(err);
     }
@@ -163,6 +177,7 @@ pub async fn get_user_balance(pool: &PgPool, email: &str) -> Result<f64, Errors>
         let balance = row.get::<f64, &str>("balance");
         return Ok(balance);
     } else {
+        error!("Unable to get balance");
         let err = Errors::DatabaseError(query.err().unwrap());
         return Err(err);
     }
@@ -182,6 +197,7 @@ pub async fn create_transaction(
         let row = query1.unwrap();
         let from_balance = row.get::<f64, &str>("balance");
         if from_balance < amount {
+            warn!("user {} has insufficient balance", from_email);
             let err = Errors::InsufficientBalance;
             return Err(err);
         }
@@ -217,7 +233,6 @@ pub async fn create_transaction(
                 .execute(pool)
                 .await;
                 if query4.is_ok() {
-                    println!("Transaction successful");
                     let transaction = Transaction {
                         id,
                         from_email: from_email.to_string(),
@@ -228,7 +243,7 @@ pub async fn create_transaction(
                     return Ok(transaction);
                 } else {
                     //reverse the balance for failed transaction
-                    println!(" transaction failed{:?}", query4);
+                    error!(" transaction failed{:?}", query4);
                     let query5 = sqlx::query(
                         "UPDATE users
             SET balance = CASE
@@ -246,8 +261,8 @@ pub async fn create_transaction(
                         let err = Errors::TransactionError;
                         return Err(err);
                     } else {
-                        println!(
-                            "Fatal error unable to reverse the account balance:{:?}",
+                        error!(
+                            "FATAL: error unable to reverse the account balance:{:?}",
                             query5
                         );
                         let err = Errors::DatabaseError(query5.err().unwrap());
@@ -255,16 +270,18 @@ pub async fn create_transaction(
                     }
                 }
             } else {
-                println!("Unable to update account balance{:?}", query3);
+                error!("Unable to update account balance{:?}", query3);
                 let err = Errors::TransactionError;
                 return Err(err);
             }
         } else {
+            error!("User with email {} does not exist", to_email);
             let err = Errors::UserDoesNotExist;
             return Err(err);
         }
     } else {
-        let err = Errors::DatabaseError(query1.err().unwrap());
+        error!("User with email {} does not exist", to_email);
+        let err = Errors::UserDoesNotExist;
         return Err(err);
     }
 }
@@ -293,6 +310,7 @@ pub async fn list_transactions(pool: &PgPool, email: &str) -> Result<Vec<Transac
         }
         return Ok(transactions);
     } else {
+        error!("Unable to get transactions");
         let err = Errors::DatabaseError(query.err().unwrap());
         return Err(err);
     }
@@ -335,16 +353,18 @@ pub async fn update_user(
                     .execute(pool)
                     .await;
                 if query4.is_err() {
-                    println!("Unable to revert users table{:?}", query4);
+                    error!("FATAL:Unable to revert users table{:?}", query4);
                 }
                 let err = Errors::DatabaseError(query3.err().unwrap());
                 return Err(err);
             }
         } else {
+            error!("Unable to update users table{:?}", query2);
             let err = Errors::DatabaseError(query2.err().unwrap());
             return Err(err);
         }
     } else {
+        error!(" Unable to find user {} ", user_email);
         let err = Errors::DatabaseError(query1.err().unwrap());
         return Err(err);
     }

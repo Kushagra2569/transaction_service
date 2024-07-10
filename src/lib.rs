@@ -14,7 +14,6 @@ mod utils;
 
 pub mod config;
 pub fn trnx_service() -> Router {
-    //TODO: implement shared state among handlers eg  auth details
     Router::new()
         .route("/register", post(register_handler))
         .route("/login", post(login_handler))

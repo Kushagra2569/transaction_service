@@ -1,8 +1,9 @@
 use crate::{config::db::get_conn, errors::Errors};
-use axum::http::StatusCode;
 use chrono::{prelude::*, Duration};
+use dotenv::dotenv;
 use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, TokenData, Validation};
 use serde::{Deserialize, Serialize};
+use std::env;
 
 #[derive(Serialize, Deserialize)]
 pub struct Claims {
@@ -12,7 +13,8 @@ pub struct Claims {
 }
 
 pub fn encode_token(payload: String) -> Result<String, Errors> {
-    let secret = "secret".to_string(); //TODO: change secret key to env variable
+    dotenv().ok();
+    let secret = env::var("JWT_KEY").expect("SECRET must be set");
     let time_now = Utc::now();
     let expire = Duration::hours(24);
     let exp: usize = (time_now + expire).timestamp() as usize;
@@ -31,7 +33,8 @@ pub fn encode_token(payload: String) -> Result<String, Errors> {
 }
 
 pub fn decode_token(token: &str) -> Result<TokenData<Claims>, Errors> {
-    let secret = "secret".to_string();
+    dotenv().ok();
+    let secret = env::var("JWT_KEY").expect("SECRET must be set");
     let result: Result<TokenData<Claims>, Errors> = decode(
         &token,
         &DecodingKey::from_secret(secret.as_ref()),
