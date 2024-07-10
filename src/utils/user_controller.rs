@@ -5,7 +5,7 @@ use chrono::prelude::*;
 use super::user_structs::{Transaction, User, UserRegister};
 use bcrypt::{hash, verify, DEFAULT_COST};
 use sqlx::{PgPool, Row};
-use tracing::{error, info, instrument, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 pub async fn register_user(
