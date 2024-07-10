@@ -4,8 +4,9 @@ use crate::errors::Errors;
 use crate::utils::{
     user_controller::{
         create_transaction, get_user_balance, list_transactions, login_user, register_user,
+        update_user,
     },
-    user_structs::{LoginRequest, RegisterRequest, TransactionRequest, UserAuth},
+    user_structs::{LoginRequest, ModifyUser, RegisterRequest, TransactionRequest, UserAuth},
 };
 use axum::Extension;
 use axum::{
@@ -239,6 +240,44 @@ pub async fn list_transaction_handler(
                 "transactions": transactions,
             });
             (StatusCode::OK, Json(transactions_json))
+        }
+        Err(e) => {
+            let error_json = serde_json::json!({
+                "error": e.to_string(),
+            });
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(error_json))
+        }
+    }
+}
+
+pub async fn modify_user_handler(
+    Extension(user_email): Extension<String>,
+    Json(payload): Json<ModifyUser>,
+) -> impl IntoResponse {
+    let pool = get_conn().await;
+    let old_name = payload.old_name.clone();
+    let new_name = payload.new_name.clone();
+
+    match update_user(
+        pool,
+        user_email.as_str(),
+        old_name.as_str(),
+        new_name.as_str(),
+    )
+    .await
+    {
+        Ok(()) => {
+            let user_json = serde_json::json!({
+                "fullname": new_name,
+                "email": user_email,
+            });
+            (StatusCode::CREATED, Json(user_json))
+        }
+        Err(Errors::WrongCredentials) => {
+            let error_json = serde_json::json!({
+                "error": "Old fullname does not match user's fullname",
+            });
+            (StatusCode::BAD_REQUEST, Json(error_json))
         }
         Err(e) => {
             let error_json = serde_json::json!({

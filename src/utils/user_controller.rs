@@ -24,6 +24,17 @@ pub async fn register_user(
         updated_at: Utc::now(),
     };
     //TODO: check user exists
+    let query = sqlx::query("SELECT * FROM userlogin WHERE email = $1")
+        .bind(&userlogin.email)
+        .fetch_optional(pool)
+        .await;
+    if query.is_ok() {
+        let row = query.unwrap();
+        if row.is_some() {
+            let err = Errors::DuplicateUserEmail;
+            return Err(err);
+        }
+    }
     let query1 = sqlx::query(
         "INSERT INTO userlogin (full_name, password, email, id, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)",
     )
@@ -283,6 +294,58 @@ pub async fn list_transactions(pool: &PgPool, email: &str) -> Result<Vec<Transac
         return Ok(transactions);
     } else {
         let err = Errors::DatabaseError(query.err().unwrap());
+        return Err(err);
+    }
+}
+
+pub async fn update_user(
+    pool: &PgPool,
+    user_email: &str,
+    old_name: &str,
+    new_name: &str,
+) -> Result<(), Errors> {
+    let query1 = sqlx::query("SELECT * FROM users WHERE email = $1")
+        .bind(user_email)
+        .fetch_one(pool)
+        .await;
+    if query1.is_ok() {
+        let row = query1.unwrap();
+        let fullname = row.get::<String, &str>("full_name");
+        if fullname != old_name {
+            let err = Errors::WrongCredentials;
+            return Err(err);
+        }
+        let query2 = sqlx::query("UPDATE users SET full_name = $1 WHERE email = $2")
+            .bind(new_name)
+            .bind(user_email)
+            .execute(pool)
+            .await;
+        if query2.is_ok() {
+            let query3 = sqlx::query("UPDATE userlogin SET full_name = $1 WHERE email = $2")
+                .bind(new_name)
+                .bind(user_email)
+                .execute(pool)
+                .await;
+            if query3.is_ok() {
+                return Ok(());
+            } else {
+                let query4 = sqlx::query("UPDATE users SET full_name = $1 WHERE email = $2")
+                    .bind(old_name)
+                    .bind(user_email)
+                    .execute(pool)
+                    .await;
+                if query4.is_err() {
+                    println!("Unable to revert users table{:?}", query4);
+                }
+                let err = Errors::DatabaseError(query3.err().unwrap());
+                return Err(err);
+            }
+        } else {
+            let err = Errors::DatabaseError(query2.err().unwrap());
+            return Err(err);
+        }
+    } else {
+        let err = Errors::DatabaseError(query1.err().unwrap());
         return Err(err);
     }
 }

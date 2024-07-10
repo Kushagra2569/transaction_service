@@ -40,6 +40,12 @@ pub struct UserAuth {
 }
 
 #[derive(Deserialize)]
+pub struct ModifyUser {
+    pub old_name: String,
+    pub new_name: String,
+}
+
+#[derive(Deserialize)]
 pub struct TransactionRequest {
     pub from_email: String,
     pub to_email: String,
