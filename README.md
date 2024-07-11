@@ -2,6 +2,8 @@
 
 Transaction Service is a robust backend server developed using Rust and the Axum web framework. Designed to provide secure and efficient handling of user data and transactions.
 
+## **NOTE: currently using an older version of sqlx cause of this issue https://github.com/launchbadge/sqlx/issues/2567**
+
 ## **Key Features**
 
 ### **User Registration and Login:**
